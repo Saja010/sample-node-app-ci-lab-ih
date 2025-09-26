@@ -46,7 +46,7 @@ jobs:
         # ------- !!!!!!انتبهوا هنا ----------
         with:
           # Check the naming of your CREDENTIALS secrets and change it
-          creds: ${{ secrets.AZURE_CREDS }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
         # ------------------------------------
 
       - name: Build, push image to Docker Hub and deploy to ACA
