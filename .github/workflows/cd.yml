@@ -118,7 +118,14 @@ jobs:
                 sudo unzip -o /tmp/$ZIP_NAME -d /opt/myapp/releases/\$TS &&
                 sudo rm -f /opt/myapp/current &&
                 sudo ln -s /opt/myapp/releases/\$TS /opt/myapp/current &&
-                cd /opt/myapp/current/deployment-package &&
+
+                # تحقق إذا المجلد deployment-package موجود
+                if [ -d /opt/myapp/current/deployment-package ]; then
+                  cd /opt/myapp/current/deployment-package
+                else
+                  cd /opt/myapp/current
+                fi &&
+
                 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - &&
                 sudo apt-get install -y nodejs &&
                 sudo npm install -g pm2 &&
