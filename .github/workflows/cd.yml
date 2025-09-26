@@ -113,9 +113,12 @@ jobs:
                 sudo apt-get update -y &&
                 sudo apt-get install -y unzip curl &&
                 curl -o /tmp/$ZIP_NAME https://${{ secrets.AZ_STORAGE_ACCOUNT }}.blob.core.windows.net/${{ secrets.AZ_STORAGE_CONTAINER }}/$ZIP_NAME?\$SAS_TOKEN &&
-                sudo mkdir -p /opt/myapp &&
-                sudo unzip -o /tmp/$ZIP_NAME -d /opt/myapp &&
-                cd /opt/myapp/deployment-package &&
+                TS=\$(date +%Y%m%d-%H%M%S) &&
+                sudo mkdir -p /opt/myapp/releases/\$TS &&
+                sudo unzip -o /tmp/$ZIP_NAME -d /opt/myapp/releases/\$TS &&
+                sudo rm -f /opt/myapp/current &&
+                sudo ln -s /opt/myapp/releases/\$TS /opt/myapp/current &&
+                cd /opt/myapp/current/deployment-package &&
                 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - &&
                 sudo apt-get install -y nodejs &&
                 sudo npm install -g pm2 &&
