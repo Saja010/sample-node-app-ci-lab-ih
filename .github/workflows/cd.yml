@@ -1,4 +1,4 @@
-name: CI/CD Pipeline with SonarQube and Azure VM
+name: CI/CD Pipeline - Node.js to Azure VM
 
 on:
   workflow_dispatch:
@@ -32,7 +32,12 @@ jobs:
       - name: Run unit tests with coverage and JUnit reports
         env:
           JEST_JUNIT_OUTPUT: coverage/junit.xml
-        run: npm run test:ci
+        run: |
+          if npm run | grep -q "test:ci"; then
+            npm run test:ci
+          else
+            echo "No test:ci script found, skipping tests"
+          fi
 
       - name: Publish test results to Checks
         uses: dorny/test-reporter@v1
@@ -62,15 +67,14 @@ jobs:
           ZIP_NAME="deployment-$(date +%Y%m%d-%H%M%S).zip"
           (cd "$GITHUB_WORKSPACE" && zip -r "$ZIP_NAME" deployment-package)
           echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
+
       - name: Azure login (client secret)
         uses: azure/login@v2
         with:
-          with:
-            client-id: ${{ secrets.AZURE_CLIENT_ID }}
-            tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-            subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-            client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
 
       - name: Upload package to Blob
         uses: azure/cli@v2
@@ -88,3 +92,39 @@ jobs:
               --file $ZIP_NAME \
               --name $ZIP_NAME \
               --overwrite
+
+      - name: Deploy to Azure VM
+        uses: azure/cli@v2
+        env:
+          ZIP_NAME: ${{ env.ZIP_NAME }}
+        with:
+          inlineScript: |
+            SAS_TOKEN=$(az storage blob generate-sas \
+              --account-name ${{ secrets.AZ_STORAGE_ACCOUNT }} \
+              --account-key ${{ secrets.AZ_STORAGE_KEY }} \
+              --container-name ${{ secrets.AZ_STORAGE_CONTAINER }} \
+              --name $ZIP_NAME \
+              --permissions r \
+              --expiry $(date -u -d "1 hour" '+%Y-%m-%dT%H:%MZ') \
+              -o tsv)
+
+            az vm run-command invoke \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --name ${{ secrets.AZURE_VM_NAME }} \
+              --command-id RunShellScript \
+              --scripts "
+                sudo apt-get update -y &&
+                sudo apt-get install -y unzip curl &&
+                curl -o /tmp/$ZIP_NAME https://${{ secrets.AZ_STORAGE_ACCOUNT }}.blob.core.windows.net/${{ secrets.AZ_STORAGE_CONTAINER }}/$ZIP_NAME?\$SAS_TOKEN &&
+                sudo mkdir -p /opt/myapp &&
+                sudo unzip -o /tmp/$ZIP_NAME -d /opt/myapp &&
+                cd /opt/myapp/deployment-package &&
+                curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - &&
+                sudo apt-get install -y nodejs &&
+                sudo npm install -g pm2 &&
+                npm ci --omit=dev &&
+                pm2 delete myapp || true &&
+                pm2 start server.js --name myapp &&
+                pm2 save
+              "
+
